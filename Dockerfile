@@ -32,10 +32,10 @@ COPY . .
 # Set environment variables for production
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV DJANGO_SETTINGS_MODULE=komorebi.settings
+ENV DJANGO_SETTINGS_MODULE=core.settings
 
 # Expose the port (AWS ECS default is often 8000 or 80)
 EXPOSE 8000
 
 # Start the app with Uvicorn (ASGI) for your async views
-CMD ["uvicorn", "komorebi.asgi:application", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "core.asgi:application", "--host", "0.0.0.0", "--port", "8000"]
