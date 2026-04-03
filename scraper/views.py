@@ -5,6 +5,7 @@ import os
 import spotipy
 import json
 import time
+import logging
 
 from django.shortcuts import render, redirect
 from django.contrib import messages
@@ -18,6 +19,8 @@ from spotipy.oauth2 import SpotifyOAuth
 from .utils import resolve_path, get_valid_spotify_token
 from .models import RadioStation, ScrapedTrack
 from .services import get_spotify_token, fetch_spotify_match
+
+logger = logging.getLogger("scraper")
 
 
 # Simple helper to recursively find a key in nested JSON
