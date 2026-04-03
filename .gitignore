@@ -13,3 +13,4 @@ wheels/
 .cache
 db.sqlite3
 launch.json
+scratch.txt
