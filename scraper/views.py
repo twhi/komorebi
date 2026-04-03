@@ -169,8 +169,8 @@ async def scrape_url_view(request):
 def get_spotify_oauth():
     """Helper function to generate the OAuth object with the correct permissions."""
     return SpotifyOAuth(
-        client_id=os.environ.get("SPOTIPY_CLIENT_ID"),
-        client_secret=os.environ.get("SPOTIPY_CLIENT_SECRET"),
+        client_id=os.environ.get("SPOTIFY_CLIENT_ID"),
+        client_secret=os.environ.get("SPOTIFY_CLIENT_SECRET"),
         redirect_uri=os.environ.get(
             "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8000/callback"
         ),

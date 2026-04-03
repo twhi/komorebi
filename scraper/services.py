@@ -69,8 +69,8 @@ async def clean_with_llm(artist, title):
 async def get_spotify_token(client):
     """Fetch a temporary access token from Spotify."""
     auth_url = "https://accounts.spotify.com/api/token"
-    client_id = os.environ.get("SPOTIPY_CLIENT_ID")
-    client_secret = os.environ.get("SPOTIPY_CLIENT_SECRET")
+    client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+    client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
 
     resp = await client.post(
         auth_url,

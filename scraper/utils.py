@@ -22,8 +22,8 @@ def get_valid_spotify_token(request):
         if not refresh_token:
             return None  # We can't refresh, user must log in again
 
-        client_id = os.environ.get("SPOTIPY_CLIENT_ID")
-        client_secret = os.environ.get("SPOTIPY_CLIENT_SECRET")
+        client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+        client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
 
         # Ask Spotify for a new access token
         response = requests.post(
