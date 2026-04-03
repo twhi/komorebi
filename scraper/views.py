@@ -207,12 +207,6 @@ def create_playlist_view(request):
 
         playlist_name = request.POST.get("playlist_name")
         track_uris = request.POST.getlist("track_uris")
-        if not track_uris:
-            messages.success(
-                request,
-                f"Playlist created successfully! Added {len(track_uris)} tracks to your Spotify library.",
-            )
-            redirect("home")
 
         # Initialize Spotipy strictly with the logged-in user's token
         sp = spotipy.Spotify(auth=spotify_token)
