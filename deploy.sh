@@ -1,5 +1,4 @@
 #!/bin/bash
-# 1. Variables
 ACCOUNT_ID="709039349524" 
 REGION="eu-west-2"
 IMAGE_NAME="komorebi-app"
@@ -17,7 +16,6 @@ echo "--- 🚀 Pushing to ECR ---"
 docker push $REPO_URL:latest
 
 echo "--- 🔄 Refreshing ECS Service ---"
-# Using the 2026 Express Mode command to trigger a fresh pull
 aws ecs express deploy --name $SERVICE_NAME --image $REPO_URL:latest --update
 
 echo "--- ✅ Deployment Started! ---"
