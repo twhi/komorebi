@@ -43,11 +43,6 @@ def find_key_in_dict(obj, key):
 
 async def scrape_url_view(request):
 
-    # get_session_token = sync_to_async(
-    #     lambda: request.session.get("spotify_token"), thread_sensitive=True
-    # )
-    # spotify_token = await get_session_token()
-
     get_token_safe = sync_to_async(get_valid_spotify_token, thread_sensitive=True)
     spotify_token = await get_token_safe(request)
 
