@@ -1,0 +1,141 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radio to Spotify</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'scraper/css/style.css' %}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="{% static 'scraper/js/tailwind-config.js' %}"></script>
+</head>
+
+<body class="bg-gray-50 text-gray-900 font-sans antialiased min-h-screen flex flex-col items-center py-10 px-4 md:px-0">
+
+    <div class="w-full max-w-4xl flex justify-between items-center mb-8 px-2">
+        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">komo<span class="text-spotify">rebi.</span></h1>
+
+        <div class="text-sm font-medium">
+            {% if not spotify_token %}
+            <a href="{% url 'spotify_login' %}"
+                class="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 px-4 py-2 rounded-full shadow-sm transition-all">
+                Connect Spotify
+            </a>
+            {% else %}
+            <span class="bg-green-50 text-spotify px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
+                Spotify Connected
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <main class="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+
+        <div class="p-8 md:p-10 border-b border-gray-100">
+            <h2 class="text-lg font-semibold mb-6">Extract tracklist from URL</h2>
+
+            <form method="POST" id="scrapeForm" class="flex flex-col md:flex-row gap-4">
+                {% csrf_token %}
+                <div class="flex-grow">
+                    <label for="target_url" class="sr-only">Episode URL</label>
+                    <input type="url" id="target_url" name="target_url" placeholder="Paste BBC or NTS mix URL here..."
+                        required
+                        class="w-full bg-gray-50 border border-gray-300 text-gray-900 rounded-xl px-5 py-3.5 focus:outline-none focus:ring-2 focus:ring-spotify focus:border-transparent transition-all">
+                </div>
+
+                <button type="submit" id="submitBtn"
+                    class="bg-gray-900 hover:bg-gray-800 text-white font-semibold px-8 py-3.5 rounded-xl transition-colors flex items-center justify-center min-w-[160px]">
+                    <span id="btnText">Extract Tracks</span>
+                    <div id="btnSpinner"
+                        class="hidden w-5 h-5 border-2 border-white border-r-transparent rounded-full spinner ml-2">
+                    </div>
+                </button>
+            </form>
+        </div>
+
+        {% if results %}
+        <div class="bg-white">
+
+            <div
+                class="flex flex-col md:flex-row justify-between items-center px-8 py-6 bg-gray-50 border-b border-gray-200 gap-4">
+                <h3 class="font-semibold text-gray-700">Found {{ results|length }} Tracks</h3>
+
+                {% if spotify_token %}
+                <form method="POST" action="{% url 'create_playlist' %}"
+                    class="flex items-center gap-3 w-full md:w-auto">
+                    {% csrf_token %}
+
+                    {% for track in results %}
+                    {% if track.spotify_uri %}
+                    <input type="hidden" name="track_uris" value="{{ track.spotify_uri }}">
+                    {% endif %}
+                    {% endfor %}
+
+                    <input type="text" name="playlist_name" placeholder="Name your playlist..." required
+                        class="flex-grow md:w-64 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-spotify focus:border-transparent transition-shadow shadow-sm">
+
+                    <button type="submit"
+                        class="bg-spotify hover:bg-spotify-hover text-white px-5 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors whitespace-nowrap">
+                        Save to Spotify
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-white border-b border-gray-200">
+                        <tr>
+                            <th class="px-8 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Artist
+                            </th>
+                            <th class="px-8 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Track
+                            </th>
+                            <th
+                                class="px-8 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">
+                                Match</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        {% for track in results %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-8 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                                {{track.artist_raw }}</td>
+                            <td class="px-8 py-4 whitespace-nowrap text-sm text-gray-600">{{ track.title_raw }}</td>
+                            <td class="px-8 py-4 whitespace-nowrap text-right flex flex-col items-end justify-center">
+                                {% if track.spotify_uri %}
+                                <div class="flex items-center gap-2 mb-1">
+                                    {% if track.matched_via_llm %}
+                                    <span
+                                        class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">AI
+                                        Fixed</span>
+                                    {% endif %}
+                                    <span class="text-sm font-bold text-green-600">{{ track.match_confidence }}%</span>
+                                </div>
+                                <a href="{{ track.spotify_uri }}" target="_blank"
+                                    class="text-xs text-gray-400 hover:text-spotify transition-colors font-medium">Listen
+                                    on Spotify ↗</a>
+                                {% else %}
+                                <span class="bg-red-50 text-red-600 px-3 py-1 rounded-full text-xs font-semibold">No
+                                    Match</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+        {% endif %}
+    </main>
+
+    <script src="{% static 'scraper/js/main.js' %}"></script>
+</body>
+
+</html>
