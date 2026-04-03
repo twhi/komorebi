@@ -171,7 +171,9 @@ def get_spotify_oauth():
     return SpotifyOAuth(
         client_id=os.environ.get("SPOTIPY_CLIENT_ID"),
         client_secret=os.environ.get("SPOTIPY_CLIENT_SECRET"),
-        redirect_uri="http://127.0.0.1:8000/callback",
+        redirect_uri=os.environ.get(
+            "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8000/callback"
+        ),
         scope="playlist-modify-public playlist-modify-private",
     )
 
