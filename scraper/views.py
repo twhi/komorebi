@@ -199,19 +199,18 @@ def spotify_callback(request):
 
 def create_playlist_view(request):
     if request.method == "POST":
-        station_id = request.POST.get("station_id")
         spotify_token = request.session.get("spotify_token")
 
         if not spotify_token:
             messages.error(request, "You must connect to Spotify first.")
             return redirect("home")
 
-        playlist_name = request.POST.get("playlist_name", "CrateSync Export")
+        playlist_name = request.POST.get("playlist_name")
         track_uris = request.POST.getlist("track_uris")
         if not track_uris:
             messages.success(
                 request,
-                f"Playlist created successfully! Added {len(uris)} tracks to your Spotify library.",
+                f"Playlist created successfully! Added {len(track_uris)} tracks to your Spotify library.",
             )
             redirect("home")
 
