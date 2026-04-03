@@ -29,6 +29,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Copy the rest of your Django project code
 COPY . .
 
+RUN python manage.py collectstatic --noinput
+
 # Set environment variables for production
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
