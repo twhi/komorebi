@@ -160,29 +160,52 @@ async def scrape_url_view(request):
         user_playlists = []
         if spotify_token:
 
-            def get_user_playlists():
-                try:
-                    sp = spotipy.Spotify(auth=spotify_token)
-                    # Get user ID to ensure we only return playlists they can modify
-                    user_id = sp.current_user()["id"]
-                    playlists_data = sp.current_user_playlists(limit=50)
+            async def get_user_playlists_async():
+                headers = {"Authorization": f"Bearer {spotify_token}"}
+                base_url = "https://api.spotify.com/v1/me"
+                async with httpx.AsyncClient() as client:
+                    user_task = client.get(base_url, headers=headers)
+                    first_page_task = client.get(
+                        f"{base_url}/playlists?limit=50&offset=0", headers=headers
+                    )
+
+                    user_res, first_page_res = await asyncio.gather(
+                        user_task, first_page_task
+                    )
+
+                    if user_res.status_code != 200 or first_page_res.status_code != 200:
+                        logger.error("Failed to fetch initial Spotify data")
+                        return []
+
+                    user_id = user_res.json()["id"]
+                    first_page_data = first_page_res.json()
+
+                    all_playlists = first_page_data.get("items", [])
+                    total_playlists = first_page_data.get("total", 0)
+
+                    if total_playlists > 50:
+                        offsets = range(50, total_playlists, 50)
+                        tasks = [
+                            client.get(
+                                f"{base_url}/playlists?limit=50&offset={offset}",
+                                headers=headers,
+                            )
+                            for offset in offsets
+                        ]
+                        responses = await asyncio.gather(*tasks)
+
+                        for res in responses:
+                            if res.status_code == 200:
+                                all_playlists.extend(res.json().get("items", []))
 
                     return [
                         {"id": p["id"], "name": p["name"]}
-                        for p in playlists_data.get("items", [])
-                        # Only include if they own it or it's collaborative
-                        if p["owner"]["id"] == user_id or p.get("collaborative")
+                        for p in all_playlists
+                        if p and (p["owner"]["id"] == user_id or p.get("collaborative"))
                     ]
-                except Exception as e:
-                    logger.error(f"Failed to fetch Spotify playlists: {e}")
-                    return []
 
-            user_playlists = await sync_to_async(
-                get_user_playlists, thread_sensitive=True
-            )()
+            user_playlists = await get_user_playlists_async()
 
-        # CRITICAL: If we are passing the station ID to the template,
-        # let's just pass it as a standalone variable to be safe.
         context = {
             "results": final_results,
             "station_id": station.id,
