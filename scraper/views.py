@@ -8,6 +8,7 @@ import logging
 from django.shortcuts import render, redirect
 from django.contrib import messages
 
+from playwright.sync_api import sync_playwright
 from asgiref.sync import sync_to_async
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
@@ -49,50 +50,65 @@ async def scrape_url_view(request):
             config = station.scraperconfig
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-            response = requests.get(target_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "html.parser")
+            # HANDLE DATA FETCH
+            # either headless browser or bog standard requests.get()
+            if config.scraper_type == "HEADLESS_BROWSER":
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context(
+                        viewport={"width": 1920, "height": 1080},
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    )
+                    page = context.new_page()
+                    page_content = None
+                    try:
+                        response = page.goto(target_url, wait_until="networkidle")
+                        page_content = page.content()
+                        soup = BeautifulSoup(page_content, "html.parser")
+                    except Exception as e:
+                        print(f"Playwright error: {e}")
+                    finally:
+                        browser.close()
+            else:
+                response = requests.get(target_url, headers=headers, timeout=10)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, "html.parser")
 
+            # extract show name
             show_name = f"{station.name} - {soup.select_one(config.show_name_selector).get_text(
                 separator=" ", strip=True
             )}"
 
-            try:
+            # HANDLE DATA EXTRACT
+            # either look for a next.js mapping or bog standard html selectors
+            if config.scraper_type == "JSON_MAPPING":
+                next_data_script = soup.find("script", id="__NEXT_DATA__")
+                if next_data_script:
+                    full_json = json.loads(next_data_script.string)
+                    tracks_array = resolve_path(full_json, config.json_root_path)
 
-                # --- STRATEGY 1: JSON EXTRACTION ---
-                if config.scraper_type == "JSON_MAPPING":
-                    next_data_script = soup.find("script", id="__NEXT_DATA__")
-                    if next_data_script:
-                        full_json = json.loads(next_data_script.string)
-                        tracks_array = resolve_path(full_json, config.json_root_path)
-
-                        if isinstance(tracks_array, list):
-                            extracted = []
-                            for item in tracks_array:
-                                artist = resolve_path(item, config.json_artist_path)
-                                title = resolve_path(item, config.json_title_path)
-                                if artist and title:
-                                    extracted.append(
-                                        (str(artist).strip(), str(title).strip())
-                                    )
-                            if extracted:
-                                return extracted, show_name
-
-                # --- STRATEGY 2: HTML FALLBACK ---
-                elif config.scraper_type == "STANDARD":
-                    containers = soup.select(config.container_selector)
-                    return [
-                        (
-                            c.select_one(config.artist_selector).text.strip(),
-                            c.select_one(config.track_title_selector).text.strip(),
-                        )
-                        for c in containers
-                        if c.select_one(config.artist_selector)
-                        and c.select_one(config.track_title_selector)
-                    ], show_name
-
-            except Exception as e:
-                print(f"Scrape failed: {e}")
+                    if isinstance(tracks_array, list):
+                        extracted = []
+                        for item in tracks_array:
+                            artist = resolve_path(item, config.json_artist_path)
+                            title = resolve_path(item, config.json_title_path)
+                            if artist and title:
+                                extracted.append(
+                                    (str(artist).strip(), str(title).strip())
+                                )
+                        if extracted:
+                            return extracted, show_name
+            else:
+                containers = soup.select(config.container_selector)
+                return [
+                    (
+                        c.select_one(config.artist_selector).text.strip(),
+                        c.select_one(config.track_title_selector).text.strip(),
+                    )
+                    for c in containers
+                    if c.select_one(config.artist_selector)
+                    and c.select_one(config.track_title_selector)
+                ], show_name
 
             return [], None
 
