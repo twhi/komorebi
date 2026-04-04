@@ -71,6 +71,7 @@ async def scrape_url_view(request):
                         logger.error(f"    Playwright error: {e}")
                     finally:
                         browser.close()
+                        logger.info(f"{soup.body}")
                         logger.info(f"    Successful playwright session - terminating")
             else:
                 response = requests.get(target_url, headers=headers, timeout=10)
