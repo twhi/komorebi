@@ -85,7 +85,7 @@ async def scrape_url_view(request):
     station_id = None
     user_playlists = []
 
-    # 1. Restore tracks from session (Handles both GET redirects and fresh POSTs)
+    # 1. Restore tracks from session
     if "last_track_ids" in request.session:
         track_ids = request.session["last_track_ids"]
         show_name = request.session.get("last_show_name")
@@ -106,7 +106,7 @@ async def scrape_url_view(request):
         if "last_station_id" in request.session:
             del request.session["last_station_id"]
 
-    # 2. Fetch User Playlists (Delegated to services.py)
+    # 2. Fetch User Playlists
     if restored_results and spotify_token:
         user_playlists = await fetch_user_playlists(spotify_token)
 
