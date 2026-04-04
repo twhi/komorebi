@@ -13,6 +13,8 @@ class RadioStation(models.Model):
 class ScraperConfig(models.Model):
     station = models.OneToOneField(RadioStation, on_delete=models.CASCADE)
 
+    show_name_selector = models.CharField(max_length=255)
+
     # HTML Fallback / Standard Selectors
     container_selector = models.CharField(max_length=255, blank=True)
     artist_selector = models.CharField(max_length=255, blank=True)

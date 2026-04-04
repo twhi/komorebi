@@ -90,7 +90,7 @@
 
             <div
                 class="flex flex-col md:flex-row justify-between items-center px-8 py-6 bg-gray-50 border-b border-gray-200 gap-4">
-                <h3 class="font-semibold text-gray-700">Found {{ results|length }} Tracks</h3>
+                <h3 class="font-semibold text-gray-700">Found {{ results|length }} for show {{ show_name }}</h3>
 
                 {% if spotify_token %}
                 <form method="POST" action="{% url 'create_playlist' %}"
@@ -104,6 +104,7 @@
                     {% endfor %}
 
                     <input type="text" name="playlist_name" placeholder="Name your playlist..." required
+                        value="{{ show_name }}"
                         class="flex-grow md:w-64 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-spotify focus:border-transparent transition-shadow shadow-sm">
 
                     <button type="submit"

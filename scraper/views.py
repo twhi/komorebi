@@ -54,6 +54,10 @@ async def scrape_url_view(request):
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, "html.parser")
 
+                show_name = f"{station.name} - {soup.select_one(config.show_name_selector).get_text(
+                    separator=" ", strip=True
+                )}"
+
                 # --- STRATEGY 1: JSON EXTRACTION ---
                 if config.use_json_data:
                     next_data_script = soup.find("script", id="__NEXT_DATA__")
@@ -71,7 +75,7 @@ async def scrape_url_view(request):
                                         (str(artist).strip(), str(title).strip())
                                     )
                             if extracted:
-                                return extracted
+                                return extracted, show_name
 
                 # --- STRATEGY 2: HTML FALLBACK ---
                 if config.container_selector:
@@ -84,14 +88,14 @@ async def scrape_url_view(request):
                         for c in containers
                         if c.select_one(config.artist_selector)
                         and c.select_one(config.track_title_selector)
-                    ]
+                    ], show_name
 
             except Exception as e:
                 print(f"Scrape failed: {e}")
 
-            return []
+            return [], None
 
-        raw_data = await asyncio.to_thread(do_scrape)
+        raw_data, show_name = await asyncio.to_thread(do_scrape)
 
         # 3. Parallel Spotify Search
         async with httpx.AsyncClient() as client:
@@ -131,7 +135,8 @@ async def scrape_url_view(request):
         # let's just pass it as a standalone variable to be safe.
         context = {
             "results": final_results,
-            "station_id": station.id,  # Pass this directly!
+            "station_id": station.id,
+            "show_name": show_name,
             "spotify_token": spotify_token,
         }
         return render(request, "scraper/index.html", context)
