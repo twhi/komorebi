@@ -10,4 +10,6 @@ wheels/
 .cache
 db.sqlite3
 launch.json
-scratch.txt
+scratch.*
+.playwright_user_data
+.playwright_data

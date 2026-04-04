@@ -11,11 +11,24 @@ class RadioStation(models.Model):
 
 
 class ScraperConfig(models.Model):
+
+    SCRAPER_TYPES = [
+        ("STANDARD", "Standard (Requests + HTML)"),
+        ("CLOUDSCRAPER", "Cloudscraper"),
+        ("HEADLESS_BROWSER", "Headless Browser (Playwright)"),
+        ("JSON_MAPPING", "JSON Mapping (i.e. __NEXT_DATA__)"),
+    ]
+
     station = models.OneToOneField(RadioStation, on_delete=models.CASCADE)
 
-    show_name_selector = models.CharField(max_length=255)
+    scraper_type = models.CharField(
+        max_length=20,
+        choices=SCRAPER_TYPES,
+        default="STANDARD",
+    )
 
     # HTML Fallback / Standard Selectors
+    show_name_selector = models.CharField(max_length=255)
     container_selector = models.CharField(max_length=255, blank=True)
     artist_selector = models.CharField(max_length=255, blank=True)
     track_title_selector = models.CharField(max_length=255, blank=True)
@@ -34,12 +47,6 @@ class ScraperConfig(models.Model):
         max_length=255,
         blank=True,
         help_text="Relative path to track title inside an item",
-    )
-
-    # Strategy Toggle
-    use_json_data = models.BooleanField(
-        default=False,
-        help_text="If checked, look for __NEXT_DATA__ before falling back to HTML",
     )
 
     def __str__(self):
