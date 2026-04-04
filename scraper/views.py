@@ -49,17 +49,18 @@ async def scrape_url_view(request):
             config = station.scraperconfig
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-            try:
-                response = requests.get(target_url, headers=headers, timeout=10)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "html.parser")
+            response = requests.get(target_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
 
-                show_name = f"{station.name} - {soup.select_one(config.show_name_selector).get_text(
-                    separator=" ", strip=True
-                )}"
+            show_name = f"{station.name} - {soup.select_one(config.show_name_selector).get_text(
+                separator=" ", strip=True
+            )}"
+
+            try:
 
                 # --- STRATEGY 1: JSON EXTRACTION ---
-                if config.use_json_data:
+                if config.scraper_type == "JSON_MAPPING":
                     next_data_script = soup.find("script", id="__NEXT_DATA__")
                     if next_data_script:
                         full_json = json.loads(next_data_script.string)
@@ -78,7 +79,7 @@ async def scrape_url_view(request):
                                 return extracted, show_name
 
                 # --- STRATEGY 2: HTML FALLBACK ---
-                if config.container_selector:
+                elif config.scraper_type == "STANDARD":
                     containers = soup.select(config.container_selector)
                     return [
                         (
