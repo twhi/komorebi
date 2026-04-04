@@ -41,6 +41,7 @@ async def scrape_url_view(request):
         station = await get_station()
 
         if not station:
+            logger.warning(f"No config found for {domain}")
             messages.error(request, f"No config found for {domain}")
             return render(request, "scraper/index.html")
 
@@ -53,6 +54,7 @@ async def scrape_url_view(request):
             # HANDLE DATA FETCH
             # either headless browser or bog standard requests.get()
             if config.scraper_type == "HEADLESS_BROWSER":
+                logger.info(f"Spinning up headless browser for {target_url}")
                 with sync_playwright() as p:
                     browser = p.chromium.launch(headless=True)
                     context = browser.new_context(
@@ -66,9 +68,10 @@ async def scrape_url_view(request):
                         page_content = page.content()
                         soup = BeautifulSoup(page_content, "html.parser")
                     except Exception as e:
-                        print(f"Playwright error: {e}")
+                        logger.error(f"    Playwright error: {e}")
                     finally:
                         browser.close()
+                        logger.info(f"    Successful playwright session - terminating")
             else:
                 response = requests.get(target_url, headers=headers, timeout=10)
                 response.raise_for_status()
@@ -113,6 +116,10 @@ async def scrape_url_view(request):
             return [], None
 
         raw_data, show_name = await asyncio.to_thread(do_scrape)
+
+        logger.info(
+            f"Data successfully fetched for {target_url}. Found {len(raw_data)} tracks."
+        )
 
         # 3. Parallel Spotify Search
         async with httpx.AsyncClient() as client:
