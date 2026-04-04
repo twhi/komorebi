@@ -13,6 +13,7 @@ ENV UV_HTTP_TIMEOUT=300
 COPY pyproject.toml uv.lock ./
 
 # Install dependencies into a virtual environment
+# Note: Ensure 'playwright' is listed in your pyproject.toml
 RUN uv sync --frozen --no-install-project --no-dev
 
 # --- Final Stage ---
@@ -25,6 +26,13 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Ensure the app uses the virtual environment
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Install Playwright browser and OS dependencies
+# We use chromium only to save space, and clean up apt lists afterwards
+RUN apt-get update && \
+    playwright install chromium && \
+    playwright install-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of your Django project code
 COPY . .
