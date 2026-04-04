@@ -99,13 +99,6 @@ async def scrape_url_view(request):
             get_restored_tracks, thread_sensitive=True
         )()
 
-        # Clear session
-        del request.session["last_track_ids"]
-        if "last_show_name" in request.session:
-            del request.session["last_show_name"]
-        if "last_station_id" in request.session:
-            del request.session["last_station_id"]
-
     # 2. Fetch User Playlists
     if restored_results and spotify_token:
         user_playlists = await fetch_user_playlists(spotify_token)
