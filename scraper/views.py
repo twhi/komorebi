@@ -1,10 +1,8 @@
 import httpx
 import asyncio
 import requests
-import os
 import spotipy
 import json
-import time
 import logging
 
 from django.shortcuts import render, redirect
@@ -14,31 +12,12 @@ from asgiref.sync import sync_to_async
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
-from spotipy.oauth2 import SpotifyOAuth
-
-from .utils import resolve_path, get_valid_spotify_token
+from .auth import get_valid_spotify_token
+from .utils import resolve_path
 from .models import RadioStation, ScrapedTrack
 from .services import get_spotify_token, fetch_spotify_match
 
 logger = logging.getLogger("scraper")
-
-
-# Simple helper to recursively find a key in nested JSON
-def find_key_in_dict(obj, key):
-    if key in obj:
-        return obj[key]
-    for k, v in obj.items():
-        if isinstance(v, dict):
-            item = find_key_in_dict(v, key)
-            if item is not None:
-                return item
-        elif isinstance(v, list):
-            for i in v:
-                if isinstance(i, dict):
-                    item = find_key_in_dict(i, key)
-                    if item is not None:
-                        return item
-    return None
 
 
 async def scrape_url_view(request):
@@ -159,42 +138,6 @@ async def scrape_url_view(request):
 
     context = {"spotify_token": spotify_token}
     return render(request, "scraper/index.html", context)
-
-
-def get_spotify_oauth():
-    """Helper function to generate the OAuth object with the correct permissions."""
-    return SpotifyOAuth(
-        client_id=os.environ.get("SPOTIFY_CLIENT_ID"),
-        client_secret=os.environ.get("SPOTIFY_CLIENT_SECRET"),
-        redirect_uri=os.environ.get(
-            "SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8000/callback"
-        ),
-        scope="playlist-modify-public playlist-modify-private",
-    )
-
-
-def spotify_login(request):
-    """Bounces the user to the official Spotify login screen."""
-    sp_oauth = get_spotify_oauth()
-    auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)
-
-
-def spotify_callback(request):
-    """Catches the user after they log in and saves their token."""
-    sp_oauth = get_spotify_oauth()
-    code = request.GET.get("code")
-
-    if code:
-        token_info = sp_oauth.get_access_token(code)
-        # Save this specific user's token directly into their browser session
-        request.session["spotify_token"] = token_info["access_token"]
-        request.session["spotify_refresh_token"] = token_info["refresh_token"]
-        request.session["spotify_token_expires_at"] = time.time() + token_info.get(
-            "expires_in", 3600
-        )
-
-    return redirect("home")
 
 
 def create_playlist_view(request):

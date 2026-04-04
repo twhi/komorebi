@@ -1,9 +1,10 @@
 from django.urls import path
 from . import views
+from . import auth
 
 urlpatterns = [
     path("", views.scrape_url_view, name="home"),
-    path("login/", views.spotify_login, name="spotify_login"),
-    path("callback/", views.spotify_callback, name="spotify_callback"),
+    path("login/", auth.spotify_login, name="spotify_login"),
+    path("callback/", auth.spotify_callback, name="spotify_callback"),
     path("create-playlist/", views.create_playlist_view, name="create_playlist"),
 ]
