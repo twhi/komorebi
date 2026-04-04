@@ -191,7 +191,7 @@ def extract_tracklist_from_url(target_url, station):
     )
 
     # 3. EXTRACT TRACKS
-    if config.scraper_type == "JSON_MAPPING":
+    if config.parsing_strategy == "JSON_MAPPING":
         next_data_script = soup.find("script", id="__NEXT_DATA__")
         if next_data_script:
             full_json = json.loads(next_data_script.string)
@@ -206,7 +206,7 @@ def extract_tracklist_from_url(target_url, station):
                         extracted.append((str(artist).strip(), str(title).strip()))
                 return extracted, show_name
 
-    else:
+    elif config.parsing_strategy == "HTML_SELECTORS":
         containers = soup.select(config.container_selector)
         extracted = [
             (

@@ -12,29 +12,38 @@ class RadioStation(models.Model):
 
 class ScraperConfig(models.Model):
 
-    SCRAPER_TYPES = [
-        ("STANDARD", "Standard (Requests + HTML)"),
-        ("CLOUDSCRAPER", "Cloudscraper"),
-        ("HEADLESS_BROWSER", "Headless Browser (Playwright)"),
-        ("JSON_MAPPING", "JSON Mapping (i.e. __NEXT_DATA__)"),
-    ]
+    # define fetchers and parsers
+    class FetchMethod(models.TextChoices):
+        STANDARD = "STANDARD", "Standard Requests"
+        HEADLESS_BROWSER = "HEADLESS_BROWSER", "Headless Browser (Playwright)"
 
-    station = models.OneToOneField(RadioStation, on_delete=models.CASCADE)
+    class ParseStrategy(models.TextChoices):
+        HTML_SELECTORS = "HTML_SELECTORS", "HTML CSS Selectors"
+        JSON_MAPPING = "JSON_MAPPING", "Next.js JSON Mapping"
 
     scraper_type = models.CharField(
         max_length=20,
-        choices=SCRAPER_TYPES,
-        default="STANDARD",
+        choices=FetchMethod.choices,
+        default=FetchMethod.STANDARD,
+        help_text="How should we fetch the page?",
     )
 
-    # HTML Fallback / Standard Selectors
+    parsing_strategy = models.CharField(
+        max_length=20,
+        choices=ParseStrategy.choices,
+        default=ParseStrategy.HTML_SELECTORS,
+        help_text="How should we extract the data?",
+    )
+
+    station = models.OneToOneField(RadioStation, on_delete=models.CASCADE)
+
+    # HTML Selectors
     show_name_selector = models.CharField(max_length=255)
     container_selector = models.CharField(max_length=255, blank=True)
     artist_selector = models.CharField(max_length=255, blank=True)
     track_title_selector = models.CharField(max_length=255, blank=True)
 
-    # NEW: JSON Mapping (The "Next.js" Strategy)
-    # This allows us to store "props.pageProps.dehydratedState.queries[1].state.data.data[1].data"
+    # JSON Selectors
     json_root_path = models.CharField(
         max_length=500, blank=True, help_text="Path to the tracks array"
     )
