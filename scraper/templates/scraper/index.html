@@ -5,8 +5,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radio to Spotify</title>
+    <title>komorebi. - Spotify Utils</title>
 
+    <link rel="icon" type="image/x-icon" href="{% static 'scraper/media/favicon.ico' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -45,7 +46,11 @@
     {% endif %}
 
     <div class="w-full max-w-4xl flex justify-between items-center mb-8 px-2">
-        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">komo<span class="text-spotify">rebi.</span></h1>
+
+        <div class="flex items-center gap-3">
+            <img src="{% static 'scraper/media/logo.png' %}" alt="Komorebi Logo" class="h-8 w-auto">
+            <h1 class="text-2xl font-bold text-gray-900 tracking-tight">komo<span class="text-spotify">rebi.</span></h1>
+        </div>
 
         <div class="text-sm font-medium">
             {% if not request.session.spotify_token %}
