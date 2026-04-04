@@ -93,13 +93,22 @@
         {% if results %}
         <div class="bg-white">
 
-            <div
-                class="flex flex-col md:flex-row justify-between items-center px-8 py-6 bg-gray-50 border-b border-gray-200 gap-4">
-                <h3 class="font-semibold text-gray-700">Found {{ results|length }} for show {{ show_name }}</h3>
+            <div class="flex flex-col px-8 py-6 bg-gray-50 border-b border-gray-200 gap-5">
+
+                <div class="flex justify-between items-start md:items-center w-full gap-4">
+                    <h3 class="font-medium text-gray-800 text-lg leading-tight">
+                        Found <span class="font-bold text-gray-900">{{ results|length }}</span> tracks for <span
+                            class="font-semibold text-gray-900">"{{ show_name }}"</span>
+                    </h3>
+                    <a href="{% url 'clear_results' %}"
+                        class="text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 font-medium transition-colors border border-gray-300 hover:border-red-300 rounded-md px-3 py-1.5 bg-white shadow-sm flex-shrink-0 mt-1 md:mt-0">
+                        ✕ Clear
+                    </a>
+                </div>
 
                 {% if spotify_token %}
                 <form method="POST" action="{% url 'create_playlist' %}"
-                    class="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+                    class="flex flex-col md:flex-row items-center gap-3 w-full">
                     {% csrf_token %}
 
                     {% for track in results %}
@@ -109,7 +118,7 @@
                     {% endfor %}
 
                     <select name="playlist_action" id="playlistAction"
-                        class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-spotify focus:border-transparent shadow-sm">
+                        class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-spotify focus:border-transparent shadow-sm w-full md:w-auto md:min-w-[220px]">
                         <option value="new">+ Create New Playlist</option>
                         {% if user_playlists %}
                         <optgroup label="Your Playlists">
@@ -122,15 +131,13 @@
 
                     <input type="text" name="playlist_name" id="newPlaylistInput" placeholder="Name your playlist..."
                         required value="{{ show_name }}"
-                        class="flex-grow md:w-64 bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-spotify focus:border-transparent transition-shadow shadow-sm">
+                        class="flex-grow w-full bg-white border border-gray-300 text-gray-900 text-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-spotify focus:border-transparent transition-shadow shadow-sm">
 
                     <button type="submit"
-                        class="bg-spotify hover:bg-spotify-hover text-white px-5 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors whitespace-nowrap">
+                        class="bg-spotify hover:bg-spotify-hover text-white px-6 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors whitespace-nowrap w-full md:w-auto">
                         Save to Spotify
                     </button>
                 </form>
-
-                <script src="{% static 'scraper/js/playlistToggler.js' %}"></script>
                 {% endif %}
             </div>
 

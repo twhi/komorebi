@@ -21,6 +21,18 @@ from .services import (
 logger = logging.getLogger("scraper")
 
 
+def clear_results_view(request):
+    """Wipes the scraped tracks from the session and reloads the page."""
+    keys_to_clear = ["last_track_ids", "last_show_name", "last_station_id"]
+
+    for key in keys_to_clear:
+        if key in request.session:
+            del request.session[key]
+
+    # Assuming your main URL path is named "home"
+    return redirect("home")
+
+
 async def scrape_url_view(request):
     get_token_safe = sync_to_async(get_valid_spotify_token, thread_sensitive=True)
     spotify_token = await get_token_safe(request)
