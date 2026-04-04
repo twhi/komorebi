@@ -18,6 +18,32 @@
 
 <body class="bg-gray-50 text-gray-900 font-sans antialiased min-h-screen flex flex-col items-center py-10 px-4 md:px-0">
 
+    {% if messages %}
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-3">
+        {% for message in messages %}
+        <div class="flex items-center w-full max-w-xs p-4 rounded-lg shadow-lg 
+                {% if message.tags == 'success' %} bg-green-100 text-green-800 
+                {% elif message.tags == 'error' %} bg-red-100 text-red-800 
+                {% elif message.tags == 'warning' %} bg-yellow-100 text-yellow-800 
+                {% else %} bg-blue-100 text-blue-800 {% endif %}" role="alert">
+
+            <div class="text-sm font-medium">{{ message }}</div>
+
+            <button type="button"
+                class="ml-auto -mx-1.5 -my-1.5 rounded-lg p-1.5 hover:bg-black/10 inline-flex h-8 w-8 items-center justify-center transition-colors"
+                onclick="this.parentElement.remove()">
+                <span class="sr-only">Close</span>
+                <svg class="w-4 h-4 opacity-70" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none"
+                    viewBox="0 0 14 14">
+                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6" />
+                </svg>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="w-full max-w-4xl flex justify-between items-center mb-8 px-2">
         <h1 class="text-2xl font-bold text-gray-900 tracking-tight">komo<span class="text-spotify">rebi.</span></h1>
 
