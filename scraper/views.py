@@ -1,31 +1,33 @@
 import httpx
 import asyncio
-import requests
 import spotipy
-import json
 import logging
 
 from django.shortcuts import render, redirect
 from django.contrib import messages
-
-from playwright.sync_api import sync_playwright
 from asgiref.sync import sync_to_async
 from urllib.parse import urlparse
-from bs4 import BeautifulSoup
 
 from .auth import get_valid_spotify_token
-from .utils import resolve_path
 from .models import RadioStation, ScrapedTrack
-from .services import get_spotify_token, fetch_spotify_match
+from .services import (
+    get_spotify_token,
+    fetch_spotify_match,
+    extract_tracklist_from_url,
+    save_scraped_tracks,
+    fetch_user_playlists,
+)
 
 logger = logging.getLogger("scraper")
 
 
 async def scrape_url_view(request):
-
     get_token_safe = sync_to_async(get_valid_spotify_token, thread_sensitive=True)
     spotify_token = await get_token_safe(request)
 
+    # ==========================================
+    # POST REQUEST HANDLING (Scraping)
+    # ==========================================
     if request.method == "POST":
         target_url = request.POST.get("target_url")
         parsed_url = urlparse(target_url)
@@ -43,80 +45,14 @@ async def scrape_url_view(request):
         if not station:
             logger.warning(f"No config found for {domain}")
             messages.error(request, f"No config found for {domain}")
-            return render(request, "scraper/index.html")
+            return render(
+                request, "scraper/index.html", {"spotify_token": spotify_token}
+            )
 
-        # 2. Scrape (Sync)
-        # We run this in a thread so it doesn't block the async loop
-        def do_scrape():
-            config = station.scraperconfig
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
-            # HANDLE DATA FETCH
-            # either headless browser or bog standard requests.get()
-            if config.scraper_type == "HEADLESS_BROWSER":
-                logger.info(f"Spinning up headless browser for {target_url}")
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(headless=True)
-                    context = browser.new_context(
-                        viewport={"width": 1920, "height": 1080},
-                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    )
-                    page = context.new_page()
-                    page_content = None
-                    try:
-                        response = page.goto(target_url, wait_until="networkidle")
-                        page_content = page.content()
-                        soup = BeautifulSoup(page_content, "html.parser")
-                    except Exception as e:
-                        logger.error(f"    Playwright error: {e}")
-                    finally:
-                        browser.close()
-                        logger.info(f"{soup.body}")
-                        logger.info(f"    Successful playwright session - terminating")
-            else:
-                response = requests.get(target_url, headers=headers, timeout=10)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "html.parser")
-
-            # extract show name
-            show_name = f"{station.name} - {soup.select_one(config.show_name_selector).get_text(
-                separator=" ", strip=True
-            )}"
-
-            # HANDLE DATA EXTRACT
-            # either look for a next.js mapping or bog standard html selectors
-            if config.scraper_type == "JSON_MAPPING":
-                next_data_script = soup.find("script", id="__NEXT_DATA__")
-                if next_data_script:
-                    full_json = json.loads(next_data_script.string)
-                    tracks_array = resolve_path(full_json, config.json_root_path)
-
-                    if isinstance(tracks_array, list):
-                        extracted = []
-                        for item in tracks_array:
-                            artist = resolve_path(item, config.json_artist_path)
-                            title = resolve_path(item, config.json_title_path)
-                            if artist and title:
-                                extracted.append(
-                                    (str(artist).strip(), str(title).strip())
-                                )
-                        if extracted:
-                            return extracted, show_name
-            else:
-                containers = soup.select(config.container_selector)
-                return [
-                    (
-                        c.select_one(config.artist_selector).text.strip(),
-                        c.select_one(config.track_title_selector).text.strip(),
-                    )
-                    for c in containers
-                    if c.select_one(config.artist_selector)
-                    and c.select_one(config.track_title_selector)
-                ], show_name
-
-            return [], None
-
-        raw_data, show_name = await asyncio.to_thread(do_scrape)
+        # 2. Scrape
+        raw_data, show_name = await asyncio.to_thread(
+            extract_tracklist_from_url, target_url, station
+        )
 
         logger.info(
             f"Data successfully fetched for {target_url}. Found {len(raw_data)} tracks."
@@ -131,91 +67,57 @@ async def scrape_url_view(request):
             ]
             match_results = await asyncio.gather(*tasks)
 
-        # 4. Batch Save and Fetch with Eager Loading
-        final_results = []
-        for (artist, title), (uri, score, via_llm) in zip(raw_data, match_results):
+        # 4. Batch Save to DB
+        final_results = await sync_to_async(save_scraped_tracks, thread_sensitive=True)(
+            station, raw_data, match_results
+        )
 
-            def get_and_prepare_track(a=artist, t=title, u=uri, s=score, v=via_llm):
-                # 1. Get the track, or create a blank one
-                track, created = ScrapedTrack.objects.get_or_create(
-                    station=station, artist_raw=a, title_raw=t
-                )
+        # Save state to session so the GET fallthrough can pick it up
+        request.session["last_track_ids"] = [track.id for track in final_results]
+        request.session["last_show_name"] = show_name
+        request.session["last_station_id"] = station.id
 
-                # 2. If it's new, OR if our new algorithm found a better score, update it!
-                # (We use "or 0" just in case your old records have a null match_confidence)
-                if created or s > (track.match_confidence or 0):
-                    track.spotify_uri = u
-                    track.match_confidence = s
-                    track.matched_via_llm = v
-                    track.save()
+    # ==========================================
+    # GET REQUEST HANDLING & POST FALLTHROUGH
+    # ==========================================
+    restored_results = []
+    show_name = None
+    station_id = None
+    user_playlists = []
 
-                return track
+    # 1. Restore tracks from session (Handles both GET redirects and fresh POSTs)
+    if "last_track_ids" in request.session:
+        track_ids = request.session["last_track_ids"]
+        show_name = request.session.get("last_show_name")
+        station_id = request.session.get("last_station_id")
 
-            track_obj = await sync_to_async(
-                get_and_prepare_track, thread_sensitive=True
-            )()
-            final_results.append(track_obj)
+        def get_restored_tracks():
+            tracks_dict = ScrapedTrack.objects.in_bulk(track_ids)
+            return [tracks_dict[tid] for tid in track_ids if tid in tracks_dict]
 
-        # 5. Fetch User's Existing Playlists
-        user_playlists = []
-        if spotify_token:
+        restored_results = await sync_to_async(
+            get_restored_tracks, thread_sensitive=True
+        )()
 
-            async def get_user_playlists_async():
-                headers = {"Authorization": f"Bearer {spotify_token}"}
-                base_url = "https://api.spotify.com/v1/me"
-                async with httpx.AsyncClient() as client:
-                    user_task = client.get(base_url, headers=headers)
-                    first_page_task = client.get(
-                        f"{base_url}/playlists?limit=50&offset=0", headers=headers
-                    )
+        # Clear session
+        del request.session["last_track_ids"]
+        if "last_show_name" in request.session:
+            del request.session["last_show_name"]
+        if "last_station_id" in request.session:
+            del request.session["last_station_id"]
 
-                    user_res, first_page_res = await asyncio.gather(
-                        user_task, first_page_task
-                    )
+    # 2. Fetch User Playlists (Delegated to services.py)
+    if restored_results and spotify_token:
+        user_playlists = await fetch_user_playlists(spotify_token)
 
-                    if user_res.status_code != 200 or first_page_res.status_code != 200:
-                        logger.error("Failed to fetch initial Spotify data")
-                        return []
+    context = {
+        "spotify_token": spotify_token,
+        "results": restored_results if restored_results else None,
+        "show_name": show_name,
+        "station_id": station_id,
+        "user_playlists": user_playlists,
+    }
 
-                    user_id = user_res.json()["id"]
-                    first_page_data = first_page_res.json()
-
-                    all_playlists = first_page_data.get("items", [])
-                    total_playlists = first_page_data.get("total", 0)
-
-                    if total_playlists > 50:
-                        offsets = range(50, total_playlists, 50)
-                        tasks = [
-                            client.get(
-                                f"{base_url}/playlists?limit=50&offset={offset}",
-                                headers=headers,
-                            )
-                            for offset in offsets
-                        ]
-                        responses = await asyncio.gather(*tasks)
-
-                        for res in responses:
-                            if res.status_code == 200:
-                                all_playlists.extend(res.json().get("items", []))
-
-                    return [
-                        {"id": p["id"], "name": p["name"]}
-                        for p in all_playlists
-                        if p and (p["owner"]["id"] == user_id or p.get("collaborative"))
-                    ]
-
-            user_playlists = await get_user_playlists_async()
-
-        context = {
-            "results": final_results,
-            "station_id": station.id,
-            "show_name": show_name,
-            "spotify_token": spotify_token,
-            "user_playlists": user_playlists,
-        }
-        return render(request, "scraper/index.html", context)
-
-    context = {"spotify_token": spotify_token}
     return render(request, "scraper/index.html", context)
 
 
@@ -231,25 +133,20 @@ def create_playlist_view(request):
         playlist_name = request.POST.get("playlist_name")
         track_uris = request.POST.getlist("track_uris")
 
-        # Quick safety check in case no tracks were found/selected
         if not track_uris:
             messages.warning(request, "No tracks were available to add.")
             return redirect("home")
 
-        # Initialize Spotipy strictly with the logged-in user's token
         sp = spotipy.Spotify(auth=spotify_token)
 
         try:
-            # 1. Identify the user
             user_profile = sp.current_user()
             user_id = user_profile["id"]
 
             target_playlist_id = None
             display_name = ""
 
-            # 2. Determine if we are creating a new playlist or using an existing one
             if playlist_action == "new":
-                # Create the blank playlist
                 playlist = sp.user_playlist_create(
                     user=user_id, name=playlist_name, public=False
                 )
@@ -257,10 +154,7 @@ def create_playlist_view(request):
                 display_name = playlist_name
                 action_text = "Playlist created successfully! Added"
             else:
-                # The action value is the existing playlist ID
                 target_playlist_id = playlist_action
-
-                # Fetch the existing playlist name for a cleaner success message
                 try:
                     existing_playlist = sp.playlist(target_playlist_id, fields="name")
                     display_name = existing_playlist["name"]
@@ -269,7 +163,6 @@ def create_playlist_view(request):
 
                 action_text = "Successfully added"
 
-            # 3. Add tracks in chunks of 100 to obey Spotify's API limits
             for i in range(0, len(track_uris), 100):
                 chunk = track_uris[i : i + 100]
                 sp.playlist_add_items(target_playlist_id, chunk)

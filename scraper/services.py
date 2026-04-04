@@ -1,8 +1,20 @@
 import os
-import httpx
-import asyncio
 import json
 import re
+import requests
+import json
+import logging
+import httpx
+import asyncio
+
+from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+
+from .models import ScrapedTrack
+from .utils import resolve_path
+
+logger = logging.getLogger("scraper")
 
 from thefuzz import fuzz
 from openai import AsyncOpenAI
@@ -133,3 +145,148 @@ async def fetch_spotify_match(http_client, token, artist, title):
         print("skipping llm stuff for", artist, title)
 
     return best_uri, best_score, False
+
+
+def extract_tracklist_from_url(target_url, station):
+    """
+    Synchronous function to handle the actual web scraping.
+    Returns: (raw_data_list, show_name_string)
+    """
+    config = station.scraperconfig
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    soup = None
+
+    # 1. FETCH HTML
+    if config.scraper_type == "HEADLESS_BROWSER":
+        logger.info(f"Spinning up headless browser for {target_url}")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
+            page = context.new_page()
+            try:
+                page.goto(target_url, wait_until="networkidle")
+                soup = BeautifulSoup(page.content(), "html.parser")
+            except Exception as e:
+                logger.error(f"Playwright error: {e}")
+            finally:
+                browser.close()
+                logger.info("Successful playwright session - terminating")
+    else:
+        response = requests.get(target_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+    if not soup:
+        return [], None
+
+    # 2. EXTRACT SHOW NAME
+    show_name_el = soup.select_one(config.show_name_selector)
+    show_name = (
+        f"{station.name} - {show_name_el.get_text(separator=' ', strip=True)}"
+        if show_name_el
+        else station.name
+    )
+
+    # 3. EXTRACT TRACKS
+    if config.scraper_type == "JSON_MAPPING":
+        next_data_script = soup.find("script", id="__NEXT_DATA__")
+        if next_data_script:
+            full_json = json.loads(next_data_script.string)
+            tracks_array = resolve_path(full_json, config.json_root_path)
+
+            if isinstance(tracks_array, list):
+                extracted = []
+                for item in tracks_array:
+                    artist = resolve_path(item, config.json_artist_path)
+                    title = resolve_path(item, config.json_title_path)
+                    if artist and title:
+                        extracted.append((str(artist).strip(), str(title).strip()))
+                return extracted, show_name
+
+    else:
+        containers = soup.select(config.container_selector)
+        extracted = [
+            (
+                c.select_one(config.artist_selector).text.strip(),
+                c.select_one(config.track_title_selector).text.strip(),
+            )
+            for c in containers
+            if c.select_one(config.artist_selector)
+            and c.select_one(config.track_title_selector)
+        ]
+        return extracted, show_name
+
+    return [], show_name
+
+
+def save_scraped_tracks(station, raw_data, match_results):
+    """
+    Synchronous function to handle batch saving to the database.
+    By doing this in one sync function, we avoid hitting the async loop
+    for every single track iteration.
+    """
+    final_results = []
+    for (artist, title), (uri, score, via_llm) in zip(raw_data, match_results):
+        track, created = ScrapedTrack.objects.get_or_create(
+            station=station, artist_raw=artist, title_raw=title
+        )
+
+        if created or score > (track.match_confidence or 0):
+            track.spotify_uri = uri
+            track.match_confidence = score
+            track.matched_via_llm = via_llm
+            track.save()
+
+        final_results.append(track)
+
+    return final_results
+
+
+async def fetch_user_playlists(spotify_token):
+    """
+    Asynchronous function to rapidly fetch all pages of a user's Spotify playlists.
+    """
+    headers = {"Authorization": f"Bearer {spotify_token}"}
+    base_url = "https://api.spotify.com/v1"
+
+    async with httpx.AsyncClient() as client:
+        # Get user profile and first page of playlists concurrently
+        user_task = client.get(f"{base_url}/me", headers=headers)
+        first_page_task = client.get(
+            f"{base_url}/me/playlists?limit=50&offset=0", headers=headers
+        )
+
+        user_res, first_page_res = await asyncio.gather(user_task, first_page_task)
+
+        if user_res.status_code != 200 or first_page_res.status_code != 200:
+            return []
+
+        user_id = user_res.json()["id"]
+        first_page_data = first_page_res.json()
+
+        all_playlists = first_page_data.get("items", [])
+        total_playlists = first_page_data.get("total", 0)
+
+        # Fetch remaining pages concurrently
+        if total_playlists > 50:
+            offsets = range(50, total_playlists, 50)
+            tasks = [
+                client.get(
+                    f"{base_url}/me/playlists?limit=50&offset={offset}", headers=headers
+                )
+                for offset in offsets
+            ]
+            responses = await asyncio.gather(*tasks)
+
+            for res in responses:
+                if res.status_code == 200:
+                    all_playlists.extend(res.json().get("items", []))
+
+        return [
+            {"id": p["id"], "name": p["name"]}
+            for p in all_playlists
+            if p and (p["owner"]["id"] == user_id or p.get("collaborative"))
+        ]
