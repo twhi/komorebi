@@ -156,6 +156,31 @@ async def scrape_url_view(request):
             )()
             final_results.append(track_obj)
 
+        # 5. Fetch User's Existing Playlists
+        user_playlists = []
+        if spotify_token:
+
+            def get_user_playlists():
+                try:
+                    sp = spotipy.Spotify(auth=spotify_token)
+                    # Get user ID to ensure we only return playlists they can modify
+                    user_id = sp.current_user()["id"]
+                    playlists_data = sp.current_user_playlists(limit=50)
+
+                    return [
+                        {"id": p["id"], "name": p["name"]}
+                        for p in playlists_data.get("items", [])
+                        # Only include if they own it or it's collaborative
+                        if p["owner"]["id"] == user_id or p.get("collaborative")
+                    ]
+                except Exception as e:
+                    logger.error(f"Failed to fetch Spotify playlists: {e}")
+                    return []
+
+            user_playlists = await sync_to_async(
+                get_user_playlists, thread_sensitive=True
+            )()
+
         # CRITICAL: If we are passing the station ID to the template,
         # let's just pass it as a standalone variable to be safe.
         context = {
@@ -163,6 +188,7 @@ async def scrape_url_view(request):
             "station_id": station.id,
             "show_name": show_name,
             "spotify_token": spotify_token,
+            "user_playlists": user_playlists,
         }
         return render(request, "scraper/index.html", context)
 
@@ -178,8 +204,14 @@ def create_playlist_view(request):
             messages.error(request, "You must connect to Spotify first.")
             return redirect("home")
 
+        playlist_action = request.POST.get("playlist_action")
         playlist_name = request.POST.get("playlist_name")
         track_uris = request.POST.getlist("track_uris")
+
+        # Quick safety check in case no tracks were found/selected
+        if not track_uris:
+            messages.warning(request, "No tracks were available to add.")
+            return redirect("home")
 
         # Initialize Spotipy strictly with the logged-in user's token
         sp = spotipy.Spotify(auth=spotify_token)
@@ -189,22 +221,42 @@ def create_playlist_view(request):
             user_profile = sp.current_user()
             user_id = user_profile["id"]
 
-            # 2. Create the blank playlist
-            playlist = sp.user_playlist_create(
-                user=user_id, name=playlist_name, public=False
-            )
+            target_playlist_id = None
+            display_name = ""
+
+            # 2. Determine if we are creating a new playlist or using an existing one
+            if playlist_action == "new":
+                # Create the blank playlist
+                playlist = sp.user_playlist_create(
+                    user=user_id, name=playlist_name, public=False
+                )
+                target_playlist_id = playlist["id"]
+                display_name = playlist_name
+                action_text = "Playlist created successfully! Added"
+            else:
+                # The action value is the existing playlist ID
+                target_playlist_id = playlist_action
+
+                # Fetch the existing playlist name for a cleaner success message
+                try:
+                    existing_playlist = sp.playlist(target_playlist_id, fields="name")
+                    display_name = existing_playlist["name"]
+                except spotipy.SpotifyException:
+                    display_name = "your existing playlist"
+
+                action_text = "Successfully added"
 
             # 3. Add tracks in chunks of 100 to obey Spotify's API limits
             for i in range(0, len(track_uris), 100):
                 chunk = track_uris[i : i + 100]
-                sp.playlist_add_items(playlist["id"], chunk)
+                sp.playlist_add_items(target_playlist_id, chunk)
 
             messages.success(
-                request,
-                f"Playlist created successfully! Added {len(track_uris)} tracks to your Spotify library.",
+                request, f"{action_text} {len(track_uris)} tracks to '{display_name}'."
             )
 
         except Exception as e:
-            messages.error(request, f"Failed to create playlist: {str(e)}")
+            logger.error(f"Failed to handle playlist: {str(e)}")
+            messages.error(request, f"Failed to process playlist: {str(e)}")
 
     return redirect("home")
