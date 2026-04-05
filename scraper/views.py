@@ -21,6 +21,23 @@ from .services import (
 logger = logging.getLogger("scraper")
 
 
+def kill_spotify_session(request):
+    if "spotify_token" in request.session:
+        del request.session["spotify_token"]
+    request.session.flush()
+    return redirect("home")
+
+
+def auth_section_view(request):
+    """Returns only the Connect/Connected button partial."""
+    from .auth import get_valid_spotify_token
+
+    token = get_valid_spotify_token(request)
+    return render(
+        request, "scraper/partials/auth_section.html", {"spotify_token": token}
+    )
+
+
 async def scrape_url_view(request):
     get_token_safe = sync_to_async(get_valid_spotify_token, thread_sensitive=True)
     spotify_token = await get_token_safe(request)

@@ -1,0 +1,15 @@
+{% if not spotify_token %}
+<a href="#" data-url="{% url 'spotify_login' %}" onclick="openSpotifyPopup(this.dataset.url); return false;"
+    class="...">
+    Connect Spotify
+</a>
+{% else %}
+<div class="flex items-center gap-3">
+    <span class="bg-green-50 text-spotify px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
+        Spotify Connected
+    </span>
+    <a href="{% url 'kill_auth' %}" class="text-gray-400 hover:text-red-500 text-xs font-medium transition-colors">
+        Disconnect
+    </a>
+</div>
+{% endif %}
