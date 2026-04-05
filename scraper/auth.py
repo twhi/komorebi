@@ -2,7 +2,7 @@ import os
 import time
 import requests
 
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 
 from spotipy.oauth2 import SpotifyOAuth
 
@@ -94,4 +94,4 @@ def spotify_callback(request):
             "expires_in", 3600
         )
 
-    return redirect("home")
+    return render(request, "scraper/partials/spotify_popup_close.html")

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Authenticating...</title>
+</head>
+
+<body>
+    <script>
+        // Check if this window was opened by another window (our main app)
+        if (window.opener) {
+            // Send the exact string our event listener is waiting for
+            window.opener.postMessage('spotify_auth_success', '*');
+        }
+
+        // Close the popup window
+        window.close();
+    </script>
+</body>
+
+</html>

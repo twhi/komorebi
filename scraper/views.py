@@ -21,18 +21,15 @@ from .services import (
 logger = logging.getLogger("scraper")
 
 
-def clear_results_view(request):
-    """Wipes the scraped tracks from the session and reloads the page."""
-    keys_to_clear = ["last_track_ids", "last_show_name", "last_station_id"]
-    for key in keys_to_clear:
-        if key in request.session:
-            del request.session[key]
-    return redirect("home")
-
-
 async def scrape_url_view(request):
     get_token_safe = sync_to_async(get_valid_spotify_token, thread_sensitive=True)
     spotify_token = await get_token_safe(request)
+
+    # Initialize context variables for standard GET requests
+    display_results = None
+    show_name = None
+    station_id = None
+    user_playlists = []
 
     # ==========================================
     # POST REQUEST HANDLING (Scraping)
@@ -62,6 +59,7 @@ async def scrape_url_view(request):
         raw_data, show_name = await asyncio.to_thread(
             extract_tracklist_from_url, target_url, station
         )
+        station_id = station.id
 
         logger.info(
             f"Data successfully fetched for {target_url}. Found {len(raw_data)} tracks."
@@ -77,49 +75,31 @@ async def scrape_url_view(request):
             match_results = await asyncio.gather(*tasks)
 
         # 4. Batch Save to DB
-        final_results = await sync_to_async(save_scraped_tracks, thread_sensitive=True)(
-            station, raw_data, match_results
-        )
-
-        # Save state to session so the GET fallthrough can pick it up
-        request.session["last_track_ids"] = [track.id for track in final_results]
-        request.session["last_show_name"] = show_name
-        request.session["last_station_id"] = station.id
+        display_results = await sync_to_async(
+            save_scraped_tracks, thread_sensitive=True
+        )(station, raw_data, match_results)
 
     # ==========================================
-    # GET REQUEST HANDLING & POST FALLTHROUGH
+    # PLAYLIST FETCHING & RENDERING
     # ==========================================
-    restored_results = []
-    show_name = None
-    station_id = None
-    user_playlists = []
 
-    # 1. Restore tracks from session
-    if "last_track_ids" in request.session:
-        track_ids = request.session["last_track_ids"]
-        show_name = request.session.get("last_show_name")
-        station_id = request.session.get("last_station_id")
-
-        def get_restored_tracks():
-            tracks_dict = ScrapedTrack.objects.in_bulk(track_ids)
-            return [tracks_dict[tid] for tid in track_ids if tid in tracks_dict]
-
-        restored_results = await sync_to_async(
-            get_restored_tracks, thread_sensitive=True
-        )()
-
-    # 2. Fetch User Playlists
-    if restored_results and spotify_token:
+    # Only fetch playlists if we just successfully scraped tracks AND are logged in
+    if display_results and spotify_token:
         user_playlists = await fetch_user_playlists(spotify_token)
 
     context = {
         "spotify_token": spotify_token,
-        "results": restored_results if restored_results else None,
+        "results": display_results,
         "show_name": show_name,
         "station_id": station_id,
         "user_playlists": user_playlists,
     }
 
+    # HTMX Logic: If the request is from HTMX, return ONLY the partial
+    if request.headers.get("HX-Request"):
+        return render(request, "scraper/partials/results_card.html", context)
+
+    # Standard Logic: Return the full page
     return render(request, "scraper/index.html", context)
 
 
