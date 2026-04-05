@@ -88,7 +88,18 @@
     <main class="w-full max-w-4xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
 
         <div class="p-8 md:p-10 border-b border-gray-100">
-            <h2 class="text-lg font-semibold mb-6">Extract tracklist from URL</h2>
+            <h2 class="text-lg font-semibold mb-1">Extract tracklist from URL</h2>
+            <p class="text-sm text-gray-500 mb-6">
+                Currently supporting URLs from
+                <a href="https://www.bbc.co.uk/sounds/schedules/bbc_6music" target="_blank" rel="noopener noreferrer"
+                    class="text-slate-700 hover:text-spotify font-medium underline decoration-gray-300 hover:decoration-spotify transition-colors">BBC
+                    Radio</a>,
+                <a href="https://www.nts.live/" target="_blank" rel="noopener noreferrer"
+                    class="text-slate-700 hover:text-spotify font-medium underline decoration-gray-300 hover:decoration-spotify transition-colors">NTS
+                    Radio</a>, and
+                <a href="https://trackid.net/" target="_blank" rel="noopener noreferrer"
+                    class="text-slate-700 hover:text-spotify font-medium underline decoration-gray-300 hover:decoration-spotify transition-colors">TrackID.net</a>.
+            </p>
 
             <form id="scrapeForm" hx-post="{% url 'home' %}" hx-target="#results-section" hx-indicator="#btnSpinner"
                 class="flex flex-col md:flex-row gap-4">
