@@ -71,16 +71,7 @@
         </div>
         <div class="text-sm font-medium">
             <div id="auth-container" class="text-sm font-medium">
-                {% if not request.session.spotify_token %}
-                <a href="#" data-url="{% url 'spotify_login' %}"
-                    onclick="openSpotifyPopup(this.dataset.url); return false;" class="...">
-                    Connect Spotify
-                </a>
-                {% else %}
-                <span
-                    class="bg-green-50 text-spotify px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">Spotify
-                    Connected</span>
-                {% endif %}
+                {% include 'scraper/partials/auth_section.html' %}
             </div>
         </div>
     </div>
@@ -136,6 +127,45 @@
         {% endfor %}
     </div>
     {% endif %}
+
+    <script>
+        /**
+         * Opens the Spotify Auth in a popup window.
+         * Using the URL from the button's data-url attribute.
+         */
+        function openSpotifyPopup(url) {
+            const width = 500;
+            const height = 700;
+            const left = (window.innerWidth - width) / 2;
+            const top = (window.screen.height - height) / 2;
+            window.open(url, 'SpotifyAuth', `width=${width},height=${height},top=${top},left=${left}`);
+        }
+
+        /**
+         * Refreshes the Spotify Connection UI using HTMX.
+         */
+        function handleAuthSuccess() {
+            htmx.ajax('GET', '{% url "auth_section" %}', {
+                target: '#auth-container',
+                swap: 'innerHTML'
+            });
+        }
+
+        // 1. Listen for direct messages from the popup (postMessage)
+        window.addEventListener('message', (event) => {
+            if (event.data === 'spotify_auth_success') {
+                handleAuthSuccess();
+            }
+        });
+
+        // 2. Listen for storage flags (Backup for cross-origin/disowned popups)
+        window.addEventListener('storage', (event) => {
+            if (event.key === 'spotify_auth_status' && event.newValue?.startsWith('success')) {
+                handleAuthSuccess();
+                localStorage.removeItem('spotify_auth_status'); // Clean up
+            }
+        });
+    </script>
 
 </body>
 
