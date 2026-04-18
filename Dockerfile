@@ -48,4 +48,4 @@ ENV DJANGO_SETTINGS_MODULE=config.settings
 EXPOSE 8000
 
 # Start the app with Uvicorn (ASGI) for your async views
-CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn config.asgi:application --host 0.0.0.0 --port ${PORT:-8000}
