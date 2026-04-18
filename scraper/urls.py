@@ -9,4 +9,7 @@ urlpatterns = [
     path("create-playlist/", views.create_playlist_view, name="create_playlist"),
     path("kill-auth/", views.kill_spotify_session, name="kill_auth"),
     path("auth-section/", views.auth_section_view, name="auth_section"),
+    path(
+        "playlists-partial/", views.playlist_list_partial, name="playlist_list_partial"
+    ),
 ]

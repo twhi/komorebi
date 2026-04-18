@@ -21,6 +21,26 @@ from .services import (
 logger = logging.getLogger("scraper")
 
 
+def playlist_list_partial(request):
+    from .auth import get_valid_spotify_token
+    import spotipy
+
+    token_info = get_valid_spotify_token(request)
+    playlists = []
+
+    if token_info:
+        sp = spotipy.Spotify(auth=token_info["access_token"])
+        # Fetch current user's playlists
+        results = sp.current_user_playlists()
+        playlists = results["items"]
+
+    return render(
+        request,
+        "scraper/partials/playlists.html",
+        {"playlists": playlists, "spotify_token": token_info},
+    )
+
+
 def kill_spotify_session(request):
     if "spotify_token" in request.session:
         del request.session["spotify_token"]
