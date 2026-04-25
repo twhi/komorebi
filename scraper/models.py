@@ -68,7 +68,7 @@ class ScrapedTrack(models.Model):
     title_raw = models.CharField(max_length=255)
     scraped_at = models.DateTimeField(auto_now_add=True)
 
-    spotify_uri = models.CharField(max_length=255, blank=True, null=True)
+    youtube_id = models.CharField(max_length=255, blank=True, null=True)
     match_confidence = models.FloatField(null=True, blank=True)
     matched_via_llm = models.BooleanField(default=False)
 

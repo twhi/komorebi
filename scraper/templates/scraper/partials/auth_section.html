@@ -1,15 +1,15 @@
-{% if not spotify_token %}
-<a href="#" data-url="{% url 'spotify_login' %}" onclick="openSpotifyPopup(this.dataset.url); return false;"
-    class="...">
-    Connect Spotify
-</a>
+{% if not ytmusic_token %}
+<button onclick="startYTAuth()"
+    class="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all active:scale-95">
+    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.377.505 9.377.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+    Connect YouTube Music
+</button>
 {% else %}
-<div class="flex items-center gap-3">
-    <span class="bg-green-50 text-spotify px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
-        Spotify Connected
+<div class="flex items-center gap-4">
+    <span class="bg-green-50 text-ytmusic px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+        <span class="w-2 h-2 bg-ytmusic rounded-full animate-pulse"></span>
+        YouTube Connected
     </span>
-    <a href="{% url 'kill_auth' %}" class="text-gray-400 hover:text-red-500 text-xs font-medium transition-colors">
-        Disconnect
-    </a>
+    <a href="{% url 'kill_auth' %}" class="text-xs text-slate-400 hover:text-slate-600 underline">Disconnect</a>
 </div>
 {% endif %}

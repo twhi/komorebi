@@ -9,6 +9,7 @@ wheels/
 .env
 .cache
 db.sqlite3
+*.sqlite3
 launch.json
 scratch.*
 .playwright_user_data
