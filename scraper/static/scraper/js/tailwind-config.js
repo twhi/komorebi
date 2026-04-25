@@ -5,10 +5,10 @@ tailwind.config = {
                 sans: ['Inter', 'system-ui', 'sans-serif'],
             },
             colors: {
-                spotify: {
-                    DEFAULT: '#1DB954',
-                    hover: '#1ed760',
-                    dark: '#121212'
+                ytmusic: {
+                    DEFAULT: '#FF0000',
+                    hover: '#CC0000',
+                    dark: '#000000'
                 }
             }
         }

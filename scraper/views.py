@@ -1,82 +1,57 @@
 import httpx
 import asyncio
-import spotipy
 import logging
 
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from asgiref.sync import sync_to_async
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
-from .auth import get_valid_spotify_token
+from .auth import get_valid_ytmusic_token
 from .models import RadioStation, ScrapedTrack
 from .services import (
-    get_spotify_token,
-    fetch_spotify_match,
+    fetch_ytmusic_match,
     extract_tracklist_from_url,
     save_scraped_tracks,
-    fetch_user_playlists,
+    create_yt_playlist,
+    add_tracks_to_yt_playlist,
 )
 
 logger = logging.getLogger("scraper")
 
 
-def playlist_list_partial(request):
-    from .auth import get_valid_spotify_token
-    import spotipy
-
-    token_info = get_valid_spotify_token(request)
-    playlists = []
-
-    if token_info:
-        sp = spotipy.Spotify(auth=token_info["access_token"])
-        # Fetch current user's playlists
-        results = sp.current_user_playlists()
-        playlists = results["items"]
-
-    return render(
-        request,
-        "scraper/partials/playlists.html",
-        {"playlists": playlists, "spotify_token": token_info},
-    )
-
-
-def kill_spotify_session(request):
-    if "spotify_token" in request.session:
-        del request.session["spotify_token"]
+def kill_ytmusic_session(request):
+    if "ytmusic_access_token" in request.session:
+        del request.session["ytmusic_access_token"]
+    if "ytmusic_refresh_token" in request.session:
+        del request.session["ytmusic_refresh_token"]
+    if "ytmusic_token_expires_at" in request.session:
+        del request.session["ytmusic_token_expires_at"]
     request.session.flush()
     return redirect("home")
 
 
 def auth_section_view(request):
     """Returns only the Connect/Connected button partial."""
-    from .auth import get_valid_spotify_token
-
-    token = get_valid_spotify_token(request)
+    token = get_valid_ytmusic_token(request)
     return render(
-        request, "scraper/partials/auth_section.html", {"spotify_token": token}
+        request, "scraper/partials/auth_section.html", {"ytmusic_token": token}
     )
 
 
 async def scrape_url_view(request):
-    get_token_safe = sync_to_async(get_valid_spotify_token, thread_sensitive=True)
-    spotify_token = await get_token_safe(request)
+    get_token_safe = sync_to_async(get_valid_ytmusic_token, thread_sensitive=True)
+    ytmusic_token = await get_token_safe(request)
 
-    # Initialize context variables for standard GET requests
     display_results = None
     show_name = None
     station_id = None
-    user_playlists = []
 
-    # ==========================================
-    # POST REQUEST HANDLING (Scraping)
-    # ==========================================
     if request.method == "POST":
         target_url = request.POST.get("target_url")
         parsed_url = urlparse(target_url)
         domain = parsed_url.netloc
 
-        # 1. Async DB Lookup for Station
         get_station = sync_to_async(
             lambda: RadioStation.objects.filter(
                 base_url__icontains=domain, is_active=True
@@ -89,10 +64,9 @@ async def scrape_url_view(request):
             logger.warning(f"No config found for {domain}")
             messages.error(request, f"No config found for {domain}")
             return render(
-                request, "scraper/index.html", {"spotify_token": spotify_token}
+                request, "scraper/index.html", {"ytmusic_token": ytmusic_token}
             )
 
-        # 2. Scrape
         raw_data, show_name = await asyncio.to_thread(
             extract_tracklist_from_url, target_url, station
         )
@@ -102,92 +76,76 @@ async def scrape_url_view(request):
             f"Data successfully fetched for {target_url}. Found {len(raw_data)} tracks."
         )
 
-        # 3. Parallel Spotify Search
-        async with httpx.AsyncClient() as client:
-            token = await get_spotify_token(client)
-            tasks = [
-                fetch_spotify_match(client, token, artist, title)
-                for artist, title in raw_data
-            ]
-            match_results = await asyncio.gather(*tasks)
+        # Parallel YouTube Music Search (unauthenticated)
+        tasks = [
+            fetch_ytmusic_match(artist, title)
+            for artist, title in raw_data
+        ]
+        match_results = await asyncio.gather(*tasks)
 
-        # 4. Batch Save to DB
+        # Batch Save to DB
         display_results = await sync_to_async(
             save_scraped_tracks, thread_sensitive=True
         )(station, raw_data, match_results)
 
-    # ==========================================
-    # PLAYLIST FETCHING & RENDERING
-    # ==========================================
-
-    # Only fetch playlists if we just successfully scraped tracks AND are logged in
-    if display_results and spotify_token:
-        user_playlists = await fetch_user_playlists(spotify_token)
-
     context = {
-        "spotify_token": spotify_token,
+        "ytmusic_token": ytmusic_token,
         "results": display_results,
         "show_name": show_name,
         "station_id": station_id,
-        "user_playlists": user_playlists,
     }
 
-    # HTMX Logic: If the request is from HTMX, return ONLY the partial
     if request.headers.get("HX-Request"):
         return render(request, "scraper/partials/results_card.html", context)
 
-    # Standard Logic: Return the full page
     return render(request, "scraper/index.html", context)
 
 
-def create_playlist_view(request):
+def save_to_playlist_view(request):
     if request.method == "POST":
-        spotify_token = request.session.get("spotify_token")
+        ytmusic_token = get_valid_ytmusic_token(request)
 
-        if not spotify_token:
-            messages.error(request, "You must connect to Spotify first.")
+        if not ytmusic_token:
+            messages.error(request, "You must connect to YouTube Music first.")
             return redirect("home")
 
-        playlist_action = request.POST.get("playlist_action")
+        playlist_action = request.POST.get("playlist_action") # 'new' or 'existing'
         playlist_name = request.POST.get("playlist_name")
-        track_uris = request.POST.getlist("track_uris")
+        playlist_url = request.POST.get("playlist_url")
+        track_ids = request.POST.getlist("track_ids")
 
-        if not track_uris:
+        if not track_ids:
             messages.warning(request, "No tracks were available to add.")
             return redirect("home")
 
-        sp = spotipy.Spotify(auth=spotify_token)
-
         try:
-            user_profile = sp.current_user()
-            user_id = user_profile["id"]
-
             target_playlist_id = None
-            display_name = ""
-
+            
             if playlist_action == "new":
-                playlist = sp.user_playlist_create(
-                    user=user_id, name=playlist_name, public=False
-                )
-                target_playlist_id = playlist["id"]
-                display_name = playlist_name
+                target_playlist_id = create_yt_playlist(ytmusic_token, playlist_name)
+                if not target_playlist_id:
+                    raise Exception("Failed to create new playlist.")
                 action_text = "Playlist created successfully! Added"
+                display_name = playlist_name
             else:
-                target_playlist_id = playlist_action
-                try:
-                    existing_playlist = sp.playlist(target_playlist_id, fields="name")
-                    display_name = existing_playlist["name"]
-                except spotipy.SpotifyException:
-                    display_name = "your existing playlist"
-
+                # Extract playlist ID from URL if necessary
+                if "list=" in playlist_url:
+                    parsed = urlparse(playlist_url)
+                    target_playlist_id = parse_qs(parsed.query).get("list", [None])[0]
+                else:
+                    target_playlist_id = playlist_url # Assume it's the ID
+                
+                if not target_playlist_id:
+                    raise Exception("Invalid Playlist URL or ID.")
+                
                 action_text = "Successfully added"
+                display_name = "your existing playlist"
 
-            for i in range(0, len(track_uris), 100):
-                chunk = track_uris[i : i + 100]
-                sp.playlist_add_items(target_playlist_id, chunk)
+            results = add_tracks_to_yt_playlist(ytmusic_token, target_playlist_id, track_ids)
+            success_count = sum(results)
 
             messages.success(
-                request, f"{action_text} {len(track_uris)} tracks to '{display_name}'."
+                request, f"{action_text} {success_count} tracks to '{display_name}'."
             )
 
         except Exception as e:
